@@ -19,11 +19,11 @@
  *
  */
 
-#define NMEA
-//#define UBLOX
+//#define NMEA
+#define UBLOX
 //#define MTK_BINARY16
 //#define MTK_BINARY19
-#define INIT_MTK_GPS
+//#define INIT_MTK_GPS
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -34,13 +34,35 @@
 // PWM output continous sonars such as the MAXBOTIX series (connect pin2(PWM out) of the sonar to PC2
 
 #define SONAR                       // USE Sonar
+#define SONAR_SONARFULL     		450 //full sonar reading before this point (cm)
+#define SONAR_BAROFULL      		600 //full baro reading after this point (cm)
+/* Maximum number of errors to switch to baro (integer 1..20) */
+#define SONAR_ERROR_MAX     		10
 
 //Sonar type uncomment only one at a time
-//#define PINGPONG
-#define MAXBOTIX_PWM                // PWM output mode sonar
+#define PINGPONG
+//#define MAXBOTIX_PWM                // PWM output mode sonar
 
 
+#define ADNS_5050	5050
+#define OPTFLOW 	ADNS_5050
+//#define OF_ROTATE_I
 
+
+#define OF_SCLK             A2
+#define OF_SDIO             A1
+#define OF_NCS              A0 
+
+/* Lense focal distance, mm (set it for your own lense)
+(How to check: debug4 in GUI should not react on ROLL tilt, but react on ROLL slide) */
+#define OF_FOCAL_DIST 7
+/* Deadband for ROLL,PITCH sticks where position hold is enabled. Max value 100 */
+#define OF_DEADBAND 15
+/* Rotate I-term with heading rotation. It will well compensate wind */
+#define OF_ROTATE_I
+/* Low-pass filter factor to prevent shaking. Possible values 1..8.  Default is 5. */
+#define OF_LPF_FACTOR 5
+ 
 // Default PID variables
 //////////////////////////////////////////////////////////////////////////////
 // POSHOLD control gains

@@ -23,8 +23,8 @@
 #define I2C_GPS_COMMAND__b            0x0b
 #define I2C_GPS_COMMAND__c            0x0c
 #define I2C_GPS_COMMAND__d            0x0d
-#define I2C_GPS_COMMAND__e            0x0e
-#define I2C_GPS_COMMAND__f            0x0f
+#define I2C_GPS_COMMAND__e   		  0x0e
+#define I2C_GPS_COMMAND__f  		  0x0f
 
 #define I2C_GPS_COMMAND_WP_MASK       0xF0       // Waypoint number
 
@@ -96,12 +96,9 @@
 #define I2C_GPS_WP14                            217
 #define I2C_GPS_WP15                            228
 
-
-
-#define I2C_GPS_SONAR_DISTANCE                  239         //uint16_t sonar distance in cm
-
-
-
+#define I2C_GPS_ATTITUDE               239			// uint8_t accZ (write only)
+#define I2C_GPS_SONAR                  244         	// sonar 
+#define I2C_GPS_OPTFLOW                247         	// optical flow
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // End register definition
