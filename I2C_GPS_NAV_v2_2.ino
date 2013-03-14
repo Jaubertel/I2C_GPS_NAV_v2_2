@@ -40,6 +40,9 @@
 #define LAT  0
 #define LON  1
 
+#define ROLL 0
+#define PITCH 1
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Which command I got from the host ? in GPSMode variable
 #define GPSMODE_NONAV 0        // no navigation
@@ -62,6 +65,35 @@
 #else
 #define GPS_LAG 1.0f              //We assumes that MTK GPS has a 1 sec lag
 #endif
+
+/* Exponential moving average filter (optimized for integers) with factor = 2^n */
+typedef struct avg_var16
+{
+    int32_t buf; // internal bufer to store non-rounded average value
+    int16_t res; // result (rounded to int)
+} t_avg_var16;
+
+typedef struct avg_var8
+{
+    int16_t buf; // internal bufer to store non-rounded average value
+    int8_t res; // result (rounded to int)
+} t_avg_var8;
+
+
+/* n=(1..16) */
+void average16(struct avg_var16 *avg, int16_t cur, int8_t n)
+{
+    avg->buf += cur - avg->res;
+    avg->res = avg->buf >> n;
+}
+
+/* n=(1..8) */
+void average8(struct avg_var8 *avg, int8_t cur, int8_t n)
+{
+    avg->buf += cur - avg->res;
+    avg->res = avg->buf >> n;
+}
+
 
 #if defined(INIT_MTK_GPS)
 
@@ -124,11 +156,13 @@ typedef struct
 {
     uint8_t               errors;
     uint16_t              distance;
-} SONAR;
+} SONAR_DATA;
 
 typedef struct 
 {
     int16_t              angle[2];
+    uint8_t              P8;
+    uint8_t              I8;    
     uint8_t              paused;
 } OPTICAL_FLOW;
 
@@ -186,9 +220,9 @@ typedef struct
     WAYPOINT              gps_wp[16];               // 16 waypoints, WP#0 is RTH position
 
     
-
-    SONAR                 sonar;
-    OPTICAL_FLOW          flow;
+    ATTITUDE             attitude;
+    SONAR_DATA           sonar;
+    OPTICAL_FLOW         flow;
 
 } I2C_REGISTERS;
 
@@ -1233,7 +1267,7 @@ restart:
 void requestEvent()
 {
     if (receivedCommands[0] >= I2C_GPS_GROUND_SPEED 
-        && receivedCommands[0] < I2C_GPS_COS_Z) 
+        && receivedCommands[0] < i2c_dataset.attitude.cosZ) 
         i2c_dataset.status.new_data = 0;        //Accessing gps data, switch new_data_flag;
 
     //Write data from the requested data register position
@@ -1456,14 +1490,16 @@ void Optflow_update()
     int8_t axis;
 
     // enable OPTFLOW only in NAV_MODE_POSHOLD
-    if ((
-        // Position hold mode
-        (NAV_MODE_POSHOLD == nav_mode)
-        // Lost GPS fix
-        ||((!(i2c_dataset.status.gps3dfix == 1 && i2c_dataset.status.numsats >= 5)) 
-            && (NAV_MODE_NONE == nav_mode))
+    if 
+    (
+        (
+            // Position hold mode
+            (NAV_MODE_POSHOLD == nav_mode)
+            // Lost GPS fix
+            || (!(i2c_dataset.status.gps3dfix == 1 && i2c_dataset.status.numsats >= 5) && (NAV_MODE_NONE == nav_mode))
         )
         && (i2c_dataset.flow.paused == 0)
+    )
     {
         // init first time mode enabled
         if (!optflowUse)
@@ -1521,13 +1557,13 @@ void Optflow_update()
             optflowErrorI[axis] += EstHVel[axis];
             optflowErrorI[axis] = constrain(optflowErrorI[axis], -20000, 20000);
 
-            i2c_dataset.flow.angle[axis] = EstHVel[axis] * conf.P8[PIDVEL] / 50;  // 16 bit ok: 100 * 200 = 20000
+            i2c_dataset.flow.angle[axis] = EstHVel[axis] * i2c_dataset.flow.P8 / 50;  // 16 bit ok: 100 * 200 = 20000
         }
             
         // Apply I-term unconditionally
         for (axis = 0; axis < 2; axis++)
         {
-            int16_t tmp = optflow_angle[axis] + (int16_t)((int32_t)optflowErrorI[axis] * conf.I8[PIDVEL] / 5000);
+            int16_t tmp = i2c_dataset.flow.angle[axis] + (int16_t)((int32_t)optflowErrorI[axis] * i2c_dataset.flow.I8 / 5000);
             i2c_dataset.flow.angle[axis] = constrain(tmp, -300,  300);
         }
     }
@@ -1566,7 +1602,7 @@ inline void optflow_get_vel()
     // read and average surface quality
     average8(&avgSqual, (int8_t)optflow_squal(), 5);
 
-    if (i2c_dataset.cosZ > 70 && avgSqual.res > 10)
+    if (i2c_dataset.attitude.cosZ > 70 && avgSqual.res > 10)
     {
         // above 3m, freeze altitude (it means less stabilization on high altitude)
         // .. and reduce signal if surface quality <50
@@ -1584,7 +1620,7 @@ inline void optflow_get_vel()
         {
             // remove shift in position due to inclination: delta_angle * PI / 180 * 100
             // mm/sec(10m) * cm / us   ->    cm / sec
-            vel_of[axis] = ((int32_t)optflow_pos[axis] + (angle[axis] - prevAngle[axis]) * 17 ) * alt / dTime ;
+            vel_of[axis] = ((int32_t)optflow_pos[axis] + (i2c_dataset.attitude.angle[axis] - prevAngle[axis]) * 17 ) * alt / dTime ;
             /*
                               X  Y
             motor[0] = PIDMIX(-1,+1,-1); //REAR_R
@@ -1606,7 +1642,7 @@ inline void optflow_get_vel()
 
         average16(&avgVel[axis], vel_of[axis], OF_LPF_FACTOR);
         EstHVel[axis] = constrain(avgVel[axis].res, -100, 100);
-        prevAngle[axis] = angle[axis];
+        prevAngle[axis] = i2c_dataset.attitude.angle[axis];
     }
 }
 
@@ -1719,6 +1755,81 @@ inline void optflow_discard_delta()
     ADNS_write(Motion, 1);
 }
 
+/******************** SPI read/write routines ****************************/
+
+/* Write byte of data to SPI */
+void _spi_write(byte val)
+{
+    for (byte i = 128; i > 0 ; i >>= 1)
+    {
+        digitalWriteFast (OF_SCLK, LOW);
+#ifdef OF_SDIO
+        digitalWriteFast (OF_SDIO, (val & i) != 0 ? HIGH : LOW);
+#else
+        digitalWriteFast (OF_MOSI, (val & i) != 0 ? HIGH : LOW);
+#endif
+        delayMicroseconds(1);
+        digitalWriteFast (OF_SCLK, HIGH);
+    }
+}
+
+/* Read register */
+byte ADNS_read(byte address)
+{
+#ifdef OF_NCS
+    digitalWriteFast(OF_NCS, LOW);// select the chip
+    delayMicroseconds(1);
+#endif
+
+#ifdef OF_SDIO
+    pinModeFast (OF_SDIO, OUTPUT);
+#endif
+    _spi_write(address);
+
+    delayMicroseconds(TSRAD_TIME); // delay tSRAD time from datasheet
+
+#ifdef OF_SDIO
+    pinModeFast (OF_SDIO, INPUT);
+#endif
+    byte res = 0;
+    for (byte i = 128; i > 0 ; i >>= 1)
+    {
+        digitalWriteFast (OF_SCLK, LOW);
+        delayMicroseconds(1);
+        digitalWriteFast (OF_SCLK, HIGH);
+
+#ifdef OF_SDIO
+        if ( digitalReadFast(OF_SDIO) == HIGH  ) res |= i;
+#else
+        if ( digitalReadFast(OF_MISO) == HIGH  ) res |= i;
+#endif
+    }
+
+#ifdef OF_NCS
+    digitalWriteFast(OF_NCS, HIGH);// de-select the chip
+#endif
+    return res;
+}
+
+/* Write register */
+void ADNS_write(byte address, byte data)
+{
+#ifdef OF_NCS
+    digitalWriteFast(OF_NCS, LOW);// select the chip
+    delayMicroseconds(1);
+#endif
+
+#ifdef OF_SDIO
+    pinModeFast (OF_SDIO, OUTPUT);
+#endif
+    _spi_write(address);
+    _spi_write(data);
+
+#ifdef OF_NCS
+    digitalWriteFast(OF_NCS, HIGH);// de-select the chip
+#endif
+}
+
 #endif // (OPTFLOW == ADNS_5050)
 #endif // OPTFLOW
 
@@ -1782,7 +1893,7 @@ void Sonar_update()
 #if !defined(MAXBOTIX_PWM)
 
     // Turn off if inclination angle > 45
-    if (cosZ < 50)
+    if (i2c_dataset.attitude.cosZ < 50)
     {
         Sonar_inc_error();
         return;
@@ -1809,7 +1920,7 @@ void Sonar_update()
             i2c_dataset.sonar.distance = dist;
 
             // trusted height depends on distance and angle. Above it, slowly increase errors
-            uint16_t limit = (uint16_t)(cosZ - 50) * (uint16_t)(SONAR_BAROFULL - 100) / 50; // 16 bit ok: 50 * 1000max = 50000max
+            uint16_t limit = (uint16_t)(i2c_dataset.attitude.cosZ - 50) * (uint16_t)(SONAR_BAROFULL - 100) / 50; // 16 bit ok: 50 * 1000max = 50000max
             if (dist < limit)
             {
                 Sonar_dec_error(0);
@@ -1896,14 +2007,18 @@ void setup()
 
     i2c_dataset.nav_flags           = 0x80 + 0x40;      // GPS filter and low speed filters are on
 
-    i2c_dataset.cosZ                = 100;     // cos(angleZ)*100
+    i2c_dataset.attitude.cosZ           = 100;     // cos(angleZ)*100
+    i2c_dataset.attitude.angle[ROLL]    = 0;
+    i2c_dataset.attitude.angle[PITCH]   = 0;    
 
     i2c_dataset.sonar.errors        = 0;
     i2c_dataset.sonar.distance      = 0;  
 
-    i2c_dataset.flow.angle[0]       = 0;
-    i2c_dataset.flow.angle[1]       = 0;    
+    i2c_dataset.flow.angle[ROLL]    = 0;
+    i2c_dataset.flow.angle[PITCH]   = 0;    
     i2c_dataset.flow.paused         = 0;
+    i2c_dataset.flow.P8             = 50;
+    i2c_dataset.flow.I8             = 20;
 
     //Start I2C communication routines
     Wire.begin(I2C_ADDRESS);               // DO NOT FORGET TO COMPILE WITH 400KHz!!! else change TWBR Speed to 100khz on Host !!! Address 0x40 write 0x41 read
