@@ -110,7 +110,6 @@ void average8(struct avg_var8 *avg, int8_t cur, int8_t n)
 
 #endif
 
-
 typedef struct
 {
     uint8_t    new_data: 1;
@@ -154,7 +153,6 @@ typedef struct
 
 typedef struct 
 {
-    uint8_t               errors;
     uint16_t              distance;
 } SONAR_DATA;
 
@@ -163,8 +161,15 @@ typedef struct
     int16_t              angle[2];
     uint8_t              P8;
     uint8_t              I8;    
-    uint8_t              paused;
 } OPTICAL_FLOW;
+
+typedef struct
+{
+    uint8_t    optflow_pause: 1;
+    uint8_t    optflow_available: 1;    
+    uint8_t    sonar_errors: 4;        
+    uint8_t    reserved: 2;
+} EXT_STATUS_REGISTER;
 
 typedef struct
 {
@@ -187,6 +192,7 @@ typedef struct
     int16_t               nav_bearing;              // crosstrack corrected navigational bearing 1deg = 10
     int16_t               home_to_copter_bearing;   // 1deg = 10
     uint16_t              distance_to_home;         // distance to home in cm
+
     uint16_t              ground_speed;             // ground speed from gps m/s*100
     int16_t               altitude;                 // gps altitude
     uint16_t          ground_course;            // GPS ground course
@@ -218,11 +224,11 @@ typedef struct
     uint8_t              nav_imax;          // *1
 
     WAYPOINT              gps_wp[16];               // 16 waypoints, WP#0 is RTH position
-
     
     ATTITUDE             attitude;
-    SONAR_DATA           sonar;
+    EXT_STATUS_REGISTER  ext_status;
     OPTICAL_FLOW         flow;
+    SONAR_DATA           sonar;
 
 } I2C_REGISTERS;
 
@@ -1266,9 +1272,12 @@ restart:
 //
 void requestEvent()
 {
-    if (receivedCommands[0] >= I2C_GPS_GROUND_SPEED 
-        && receivedCommands[0] < i2c_dataset.attitude.cosZ) 
-        i2c_dataset.status.new_data = 0;        //Accessing gps data, switch new_data_flag;
+    // Accessing the optflow_angle
+    if (receivedCommands[0] >= I2C_GPS_OPTFLOW) 
+        i2c_dataset.ext_status.optflow_available = 0;
+
+    else if (receivedCommands[0] >= I2C_GPS_GROUND_SPEED && receivedCommands[0] < I2C_GPS_ATTITUDE) 
+        i2c_dataset.status.new_data = 0;        //Accessing gps data, switch new_data_flag;    
 
     //Write data from the requested data register position
     Wire.write((uint8_t *)&i2c_dataset + receivedCommands[0], 32);                 //Write up to 32 byte, since master is responsible for reading and sending NACK
@@ -1480,13 +1489,20 @@ static uint16_t     scale; // scale factor for raw sensor data
 static int16_t      sum_dx = 0, sum_dy = 0; // sensor's row data accumulators
 static int16_t      EstHVel[2] = { 0, 0 };  // horisontal velocity, cm/sec (constrained -100, 100)
 static int16_t      optflow_pos[2] = { 0, 0 }; // displacment (in mm*10 on height 1m)
-
+static int8_t       optflowUse = 0;
 /* PID calculations. Outputs optflow_angle[ROLL], optflow_angle[PITCH] */
 void Optflow_update()
 {
-    static int16_t optflowErrorI[2] = { 0, 0 };
+    static uint32_t _optflow_time = 0;
+
+    uint32_t now = millis();
+    if (_optflow_time > now)
+        return;
+
+    _optflow_time = now + 20;   // 50Hz, slightly slown than the fc
+
     //static int16_t prevHeading = 0;
-    static int8_t optflowUse = 0;
+    static int16_t      optflowErrorI[2] = { 0, 0 };
     int8_t axis;
 
     // enable OPTFLOW only in NAV_MODE_POSHOLD
@@ -1498,7 +1514,7 @@ void Optflow_update()
             // Lost GPS fix
             || (!(i2c_dataset.status.gps3dfix == 1 && i2c_dataset.status.numsats >= 5) && (NAV_MODE_NONE == nav_mode))
         )
-        && (i2c_dataset.flow.paused == 0)
+        && (i2c_dataset.ext_status.optflow_pause == 0)
     )
     {
         // init first time mode enabled
@@ -1842,16 +1858,16 @@ volatile uint16_t Sonar_waiting_echo = 0;
 
 void Sonar_inc_error()
 {
-    if (i2c_dataset.sonar.errors < SONAR_ERROR_MAX)
-        i2c_dataset.sonar.errors ++;
+    if (i2c_dataset.ext_status.sonar_errors < SONAR_ERROR_MAX)
+        i2c_dataset.ext_status.sonar_errors ++;
 }
 
 void Sonar_dec_error(uint8_t limit)
 {
-    if (i2c_dataset.sonar.errors > limit)
-        i2c_dataset.sonar.errors--;
+    if (i2c_dataset.ext_status.sonar_errors > limit)
+        i2c_dataset.ext_status.sonar_errors --;
     else
-        i2c_dataset.sonar.errors = limit;
+        i2c_dataset.ext_status.sonar_errors = limit;
 }
 
 
@@ -2011,14 +2027,17 @@ void setup()
     i2c_dataset.attitude.angle[ROLL]    = 0;
     i2c_dataset.attitude.angle[PITCH]   = 0;    
 
-    i2c_dataset.sonar.errors        = 0;
     i2c_dataset.sonar.distance      = 0;  
 
     i2c_dataset.flow.angle[ROLL]    = 0;
     i2c_dataset.flow.angle[PITCH]   = 0;    
-    i2c_dataset.flow.paused         = 0;
     i2c_dataset.flow.P8             = 50;
     i2c_dataset.flow.I8             = 20;
+
+    i2c_dataset.ext_status.optflow_pause = 0;
+    i2c_dataset.ext_status.optflow_available = 0;
+    i2c_dataset.ext_status.sonar_errors = 0;
+    i2c_dataset.ext_status.reserved = 0;
 
     //Start I2C communication routines
     Wire.begin(I2C_ADDRESS);               // DO NOT FORGET TO COMPILE WITH 400KHz!!! else change TWBR Speed to 100khz on Host !!! Address 0x40 write 0x41 read
@@ -2262,6 +2281,12 @@ void loop()
                     pid_nav_lon.kD((float)i2c_dataset.nav_d / 1000.0f);
                     pid_nav_lat.imax(i2c_dataset.nav_imax * 100);
                     pid_nav_lon.imax(i2c_dataset.nav_imax * 100);
+
+                    #if defined(OPTFLOW)
+                    // force reload PID
+                    optflowUse = 0;
+                    #endif
+                    
                     break;
                 case I2C_GPS_COMMAND_STOP_NAV:
                     GPS_reset_nav();

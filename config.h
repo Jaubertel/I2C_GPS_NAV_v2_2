@@ -48,7 +48,6 @@
 #define OPTFLOW 	ADNS_5050
 //#define OF_ROTATE_I
 
-
 #define OF_SCLK             A2
 #define OF_SDIO             A1
 #define OF_NCS              A0 

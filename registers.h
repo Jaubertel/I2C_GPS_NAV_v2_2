@@ -96,9 +96,13 @@
 #define I2C_GPS_WP14                            217
 #define I2C_GPS_WP15                            228
 
-#define I2C_GPS_ATTITUDE               239			// uint8_t accZ (write only)
-#define I2C_GPS_SONAR                  244         	// sonar 
-#define I2C_GPS_OPTFLOW                247         	// optical flow
+// Eric
+#define I2C_GPS_ATTITUDE               239			// uint8_t accZ + angle[2]
+#define I2C_GPS_EXT_STATUS			   244			// uint8
+#define I2C_GPS_OPTFLOW                245         	// angle[2], P, I
+#define I2C_GPS_SONAR                  251         	// uint16_t
+
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // End register definition
