@@ -145,29 +145,29 @@ typedef struct
     uint8_t         flags;       //to be defined
 } WAYPOINT;
 
-typedef struct 
+typedef struct
 {
     uint8_t              cosZ;
     int16_t              angle[2];
 } ATTITUDE;
 
-typedef struct 
+typedef struct
 {
-    uint16_t              distance;
+    int16_t              distance;
 } SONAR_DATA;
 
-typedef struct 
+typedef struct
 {
     int16_t              angle[2];
     uint8_t              P8;
-    uint8_t              I8;    
+    uint8_t              I8;
 } OPTICAL_FLOW;
 
 typedef struct
 {
     uint8_t    optflow_pause: 1;
-    uint8_t    optflow_available: 1;    
-    uint8_t    sonar_errors: 4;        
+    uint8_t    optflow_available: 1;
+    uint8_t    sonar_errors: 4;
     uint8_t    reserved: 2;
 } EXT_STATUS_REGISTER;
 
@@ -224,7 +224,7 @@ typedef struct
     uint8_t              nav_imax;          // *1
 
     WAYPOINT              gps_wp[16];               // 16 waypoints, WP#0 is RTH position
-    
+
     ATTITUDE             attitude;
     EXT_STATUS_REGISTER  ext_status;
     OPTICAL_FLOW         flow;
@@ -1272,12 +1272,13 @@ restart:
 //
 void requestEvent()
 {
+    
     // Accessing the optflow_angle
-    if (receivedCommands[0] >= I2C_GPS_OPTFLOW) 
+    if (receivedCommands[0] >= I2C_GPS_OPTFLOW && receivedCommands[0] < I2C_GPS_SONAR)
         i2c_dataset.ext_status.optflow_available = 0;
 
-    else if (receivedCommands[0] >= I2C_GPS_GROUND_SPEED && receivedCommands[0] < I2C_GPS_ATTITUDE) 
-        i2c_dataset.status.new_data = 0;        //Accessing gps data, switch new_data_flag;    
+    else if (receivedCommands[0] >= I2C_GPS_GROUND_SPEED && receivedCommands[0] < I2C_GPS_ATTITUDE)
+        i2c_dataset.status.new_data = 0;        //Accessing gps data, switch new_data_flag;
 
     //Write data from the requested data register position
     Wire.write((uint8_t *)&i2c_dataset + receivedCommands[0], 32);                 //Write up to 32 byte, since master is responsible for reading and sending NACK
@@ -1319,8 +1320,8 @@ void receiveEvent(int bytesReceived)
     //More than 1 byte was received, so there is definitely some data to write into a register
     //Check for writeable registers and discard data is it's not writeable
 
-    if ((receivedCommands[0] >= I2C_GPS_CROSSTRACK_GAIN) 
-        && (receivedCommands[0] <= REG_MAP_SIZE))  //Writeable registers above I2C_GPS_WP0
+    if ((receivedCommands[0] >= I2C_GPS_CROSSTRACK_GAIN)
+            && (receivedCommands[0] <= REG_MAP_SIZE))  //Writeable registers above I2C_GPS_WP0
     {
         ptr = (uint8_t *)&i2c_dataset + receivedCommands[0];
         for (int a = 1; a < bytesReceived; a++)
@@ -1440,6 +1441,7 @@ void GPS_SerialInit()
     {
         Serial.write(pgm_read_byte(UBLOX_INIT + i));
         //delay(5); //simulating a 38400baud pace (or less), otherwise commands are not accepted by the device.
+        delay(10); //simulating a 38400baud pace (or less), otherwise commands are not accepted by the device.
     }
 
 #elif defined(INIT_MTK_GPS)                            // MTK GPS setup
@@ -1506,60 +1508,60 @@ void Optflow_update()
     int8_t axis;
 
     // enable OPTFLOW only in NAV_MODE_POSHOLD
-    if 
+    if
     (
-        (
-            // Position hold mode
-            (NAV_MODE_POSHOLD == nav_mode)
-            // Lost GPS fix
-            || (!(i2c_dataset.status.gps3dfix == 1 && i2c_dataset.status.numsats >= 5) && (NAV_MODE_NONE == nav_mode))
-        )
-        && (i2c_dataset.ext_status.optflow_pause == 0)
+            (
+                // Position hold mode
+                (NAV_MODE_POSHOLD == nav_mode)
+                // Lost GPS fix
+                || (!(i2c_dataset.status.gps3dfix == 1 && i2c_dataset.status.numsats >= 5) && (NAV_MODE_NONE == nav_mode))
+            )
+            && (i2c_dataset.ext_status.optflow_pause == 0)
     )
     {
         // init first time mode enabled
         if (!optflowUse)
         {
-            optflowErrorI[0] = 0; 
+            optflowErrorI[0] = 0;
             optflowErrorI[1] = 0;
             //prevHeading = heading;
             optflow_discard_delta();
             optflow_start();
-            sum_dx = sum_dy = 0;            
+            sum_dx = sum_dy = 0;
             optflowUse = 1;
             return;
         }
 
         optflow_read();
-/*
-        // We do not have heading information here
-        // Rotate I to follow global axis
-#ifdef OF_ROTATE_I
-        int16_t dif = heading - prevHeading;
-        if (dif <= - 180) dif += 360;
-        else if (dif >= + 180) dif -= 360;
-        else
-        {
-        }
+        /*
+                // We do not have heading information here
+                // Rotate I to follow global axis
+        #ifdef OF_ROTATE_I
+                int16_t dif = heading - prevHeading;
+                if (dif <= - 180) dif += 360;
+                else if (dif >= + 180) dif -= 360;
+                else
+                {
+                }
 
-        if (abs(dif) > 5)  // rotate by 5-degree steps
-        {
-            rotate16(optflowErrorI, dif * 10);
-            prevHeading = heading;
-        }
-#endif
-*/
+                if (abs(dif) > 5)  // rotate by 5-degree steps
+                {
+                    rotate16(optflowErrorI, dif * 10);
+                    prevHeading = heading;
+                }
+        #endif
+        */
 
-/*       
-        // rcCommand is not available here, have to handle the rotate case 
-        // ignore of delta when rotating
-        if (abs(rcCommand[YAW]) > OF_DEADBAND) 
-        {
-            optflow_discard_delta();
-            i2c_dataset.flow.angle[ROLL] = 0;
-            i2c_dataset.flow.angle[PITCH] = 0;
-        }
-*/        
+        /*
+                // rcCommand is not available here, have to handle the rotate case
+                // ignore of delta when rotating
+                if (abs(rcCommand[YAW]) > OF_DEADBAND)
+                {
+                    optflow_discard_delta();
+                    i2c_dataset.flow.angle[ROLL] = 0;
+                    i2c_dataset.flow.angle[PITCH] = 0;
+                }
+        */
         // calculate velocity
         optflow_get_vel();
 
@@ -1575,16 +1577,19 @@ void Optflow_update()
 
             i2c_dataset.flow.angle[axis] = EstHVel[axis] * i2c_dataset.flow.P8 / 50;  // 16 bit ok: 100 * 200 = 20000
         }
-            
+
         // Apply I-term unconditionally
         for (axis = 0; axis < 2; axis++)
         {
             int16_t tmp = i2c_dataset.flow.angle[axis] + (int16_t)((int32_t)optflowErrorI[axis] * i2c_dataset.flow.I8 / 5000);
             i2c_dataset.flow.angle[axis] = constrain(tmp, -300,  300);
         }
+
+        i2c_dataset.ext_status.optflow_available = 1;
     }
     else
     {
+        i2c_dataset.ext_status.optflow_available = 0;
         if (optflowUse)
         {
             // switch mode off
@@ -1622,7 +1627,7 @@ inline void optflow_get_vel()
     {
         // above 3m, freeze altitude (it means less stabilization on high altitude)
         // .. and reduce signal if surface quality <50
-        alt = constrain((int16_t)i2c_dataset.sonar.distance, 30, (300+150)) * min(avgSqual.res, 50) * 2; // 16 bit ok: 300 * 50 * 2 = 30000;
+        alt = constrain((int16_t)i2c_dataset.sonar.distance, 30, (300 + 150)) * min(avgSqual.res, 50) * 2; // 16 bit ok: 300 * 50 * 2 = 30000;
     }
     else
     {
@@ -1718,7 +1723,7 @@ inline void optflow_get()
 //  #define RES_CFG     0b10100
 //#define   RES_CPI     750
 //  #define RES_CFG     0b10110
-//#define   RES_CPI     1000    
+//#define   RES_CPI     1000
 //  #define RES_CFG     0b11000
 
 #define RES_CPI         1250
@@ -1920,12 +1925,13 @@ void Sonar_update()
     if (Sonar_waiting_echo)
     {
         // Did not finished measurement in 7 * 2m time.
-        if ((cTime - Sonar_requestTime) / 58 > (SONAR_BAROFULL << 1)) {
-            Sonar_inc_error();       
+        if ((cTime - Sonar_requestTime) / 58 > (SONAR_BAROFULL << 1))
+        {
+            Sonar_inc_error();
             Sonar_waiting_echo = 0;
         }
     }
-    
+
     if (Sonar_waiting_echo == 0)
     {
         // calc the distance
@@ -1987,6 +1993,10 @@ void setup()
     Sonar_init();
 #endif
 
+#if defined(OPTFLOW)
+    Optflow_init();
+#endif
+
     //Init GPS
     GPS_SerialInit();
 
@@ -2025,12 +2035,12 @@ void setup()
 
     i2c_dataset.attitude.cosZ           = 100;     // cos(angleZ)*100
     i2c_dataset.attitude.angle[ROLL]    = 0;
-    i2c_dataset.attitude.angle[PITCH]   = 0;    
+    i2c_dataset.attitude.angle[PITCH]   = 0;
 
-    i2c_dataset.sonar.distance      = 0;  
+    i2c_dataset.sonar.distance      = 0;
 
     i2c_dataset.flow.angle[ROLL]    = 0;
-    i2c_dataset.flow.angle[PITCH]   = 0;    
+    i2c_dataset.flow.angle[PITCH]   = 0;
     i2c_dataset.flow.P8             = 50;
     i2c_dataset.flow.I8             = 20;
 
@@ -2064,241 +2074,243 @@ void loop()
     while (Serial.available())
     {
 
+        if (
 #if defined(NMEA)
-        if (GPS_NMEA_newFrame(Serial.read()))
-        {
+            GPS_NMEA_newFrame(Serial.read())
 #endif
-#if defined(UBLOX)
-            if (GPS_UBLOX_newFrame(Serial.read()))
-            {
+#if defined(UBLOX)            
+            GPS_UBLOX_newFrame(Serial.read())
 #endif
 #if defined(MTK_BINARY16) || defined(MTK_BINARY19)
-                if (GPS_MTK_newFrame(Serial.read()))
-                {
+            GPS_MTK_newFrame(Serial.read())
 #endif
+        )
+        {
 
 
-                    // We have a valid GGA frame and we have lat and lon in GPS_read_lat and GPS_read_lon, apply moving average filter
-                    // this is a little bit tricky since the 1e7/deg precision easily overflow a long, so we apply the filter to the fractions
-                    // only, and strip the full degrees part. This means that we have to disable the filter if we are very close to a degree line
+            // We have a valid GGA frame and we have lat and lon in GPS_read_lat and GPS_read_lon, apply moving average filter
+            // this is a little bit tricky since the 1e7/deg precision easily overflow a long, so we apply the filter to the fractions
+            // only, and strip the full degrees part. This means that we have to disable the filter if we are very close to a degree line
 
-                    #pragma region GPS FILTER
-                    if (i2c_dataset.nav_flags & I2C_NAV_FLAG_GPS_FILTER)        //is filtering switched on ?
-                    {
-
-                        GPS_filter_index = ++GPS_filter_index % GPS_FILTER_VECTOR_LENGTH;
-
-                        for (axis = 0; axis < 2; axis++)
-                        {
-                            GPS_degree[axis] = GPS_read[axis] / 10000000;  // get the degree to assure the sum fits to the int32_t
-
-                            // How close we are to a degree line ? its the first three digits from the fractions of degree
-                            //Check if we are close to a degree line, if yes, disable averaging,
-                            fraction3[axis] = (GPS_read[axis] - GPS_degree[axis] * 10000000) / 10000;
-
-                            GPS_filter_sum[axis] -= GPS_filter[axis][GPS_filter_index];
-                            GPS_filter[axis][GPS_filter_index] = GPS_read[axis] - (GPS_degree[axis] * 10000000);
-                            GPS_filter_sum[axis] += GPS_filter[axis][GPS_filter_index];
-                            GPS_filtered[axis] = GPS_filter_sum[axis] / GPS_FILTER_VECTOR_LENGTH + (GPS_degree[axis] * 10000000);
-                        }
-
-                        if ( nav_mode == NAV_MODE_POSHOLD)        //we use gps averaging only in poshold mode...
-                        {
-                            if ( fraction3[LAT] > 1 && fraction3[LAT] < 999 ) i2c_dataset.gps_loc.lat = GPS_filtered[LAT]; else i2c_dataset.gps_loc.lat = GPS_read[LAT];
-                            if ( fraction3[LON] > 1 && fraction3[LON] < 999 ) i2c_dataset.gps_loc.lon = GPS_filtered[LON]; else i2c_dataset.gps_loc.lon = GPS_read[LON];
-                        }
-                        else
-                        {
-                            i2c_dataset.gps_loc.lat = GPS_read[LAT];
-                            i2c_dataset.gps_loc.lon = GPS_read[LON];
-                        }
-                    }
-                    else     // ignore filtering since it switced off in the nav_flags
-                    {
-                        i2c_dataset.gps_loc.lat = GPS_read[LAT];
-                        i2c_dataset.gps_loc.lon = GPS_read[LON];
-                    }
-
-                    #pragma endregion
-
-                    if (i2c_dataset.status.gps3dfix == 1 && i2c_dataset.status.numsats >= 5)
-                    {
-
-                        lastframe_time = millis();
-                        //copy the gps coordinates to variables used for calculations
-                        GPS_latitude = i2c_dataset.gps_loc.lat;
-                        GPS_longitude = i2c_dataset.gps_loc.lon;
-
-                        // It's just for safety since home position must be set from the host
-                        if (GPS_fix_home == 0)
-                        {
-                            GPS_fix_home = 1;
-                            i2c_dataset.gps_wp[0].position.lat = GPS_latitude;
-                            i2c_dataset.gps_wp[0].position.lon = GPS_longitude;
-                            GPS_calc_longitude_scaling(GPS_latitude);  //need an initial value for distance and bearing calc
-                        }
-                        //dTnav calculation
-                        //Time for calculating x,y speed and navigation pids
-                        dTnav = (float)(millis() - nav_loopTimer) / 1000.0;
-                        nav_loopTimer = millis();
-                        // prevent runup from bad GPS
-                        dTnav = min(dTnav, 1.0);
-
-                        _watchdog_timer = millis();  //Reset watchdog timer
-
-                        //calculate distance and bearings for gui and other stuff continously this is independent from navigation
-                        i2c_dataset.distance_to_home = GPS_distance_cm(GPS_latitude, GPS_longitude, i2c_dataset.gps_wp[0].position.lat, i2c_dataset.gps_wp[0].position.lon);
-                        i2c_dataset.home_to_copter_bearing = GPS_bearing(i2c_dataset.gps_wp[0].position.lat, i2c_dataset.gps_wp[0].position.lon, GPS_latitude, GPS_longitude);
-                        //calculate the current velocity based on gps coordinates continously to get a valid speed at the moment when we start navigating
-                        GPS_calc_velocity(GPS_latitude, GPS_longitude);
-
-                        if (GPSMode != 0)     //ok we are navigating
-                        {
-                            //do gps nav calculations here
-
-#if defined(GPS_LEAD_FILTER)
-                            wp_distance = GPS_distance_cm(GPS_lead_latitude, GPS_lead_longitude, GPS_WP_latitude, GPS_WP_longitude);
-                            target_bearing = GPS_bearing(GPS_lead_latitude, GPS_lead_longitude, GPS_WP_latitude, GPS_WP_longitude);
-                            GPS_calc_location_error(GPS_WP_latitude, GPS_WP_longitude, GPS_lead_latitude, GPS_lead_longitude);
-#else
-                            wp_distance = GPS_distance_cm(GPS_latitude, GPS_longitude, GPS_WP_latitude, GPS_WP_longitude);
-                            target_bearing = GPS_bearing(GPS_latitude, GPS_longitude, GPS_WP_latitude, GPS_WP_longitude);
-                            GPS_calc_location_error(GPS_WP_latitude, GPS_WP_longitude, GPS_latitude, GPS_longitude);
-#endif
-
-                            switch (nav_mode)
-                            {
-                            case NAV_MODE_POSHOLD:
-                                //Desired output is in nav_lat and nav_lon where 1deg inclination is 100
-                                GPS_calc_poshold(long_error, lat_error);
-                                break;
-                            case NAV_MODE_WP:
-                                int16_t speed = GPS_calc_desired_speed(i2c_dataset.nav_speed_max, true);      //slow navigation
-                                // use error as the desired rate towards the target
-                                GPS_calc_nav_rate(speed);
-
-                                // Are we there yet ?(within 2 meters of the destination)
-                                if ((wp_distance <= i2c_dataset.wp_radius) || check_missed_wp())          //if yes switch to poshold mode
-                                {
-                                    nav_mode = NAV_MODE_POSHOLD;
-                                    //set reached flag
-                                    i2c_dataset.status.wp_reached = 1;
-                                }
-                                break;
-                            } //switch nav mode
-                        } // if GPSmode!=0
-                        // update i2c dataset from nav
-                        GPS_update_i2c_dataset();
-                    }
-                    else          // we does not have 3d fix or numsats less than 5 , stop navigation
-                    {
-                        nav_lat = 0;
-                        nav_lon = 0;
-                        GPSMode = GPSMODE_NONAV;
-                        nav_mode = NAV_MODE_NONE;
-                        wp_distance = 0;
-                        i2c_dataset.distance_to_home = 0;
-                        i2c_dataset.home_to_copter_bearing = 0;
-                        GPS_update_i2c_dataset();
-                    }
-                    // have new data at this point anyway
-                    i2c_dataset.status.new_data = 1;
-
-                } // new frame
-            } //while
-            #pragma endregion
-
-            blink_sonar_update();
-
-
-            //check watchdog timer, after 1200ms without valid packet, assume that gps communication is lost.
-            if (_watchdog_timer != 0)
+            #pragma region GPS FILTER
+            if (i2c_dataset.nav_flags & I2C_NAV_FLAG_GPS_FILTER)        //is filtering switched on ?
             {
-                if (_watchdog_timer + 1200 < millis())
+
+                GPS_filter_index = ++GPS_filter_index % GPS_FILTER_VECTOR_LENGTH;
+
+                for (axis = 0; axis < 2; axis++)
                 {
-                    i2c_dataset.status.gps2dfix = 0;
-                    i2c_dataset.status.gps3dfix = 0;
-                    i2c_dataset.status.numsats = 0;
-                    i2c_dataset.gps_loc.lat = 0;
-                    i2c_dataset.gps_loc.lon = 0;
-                    nav_lat = 0;
-                    nav_lon = 0;
-                    GPS_update_i2c_dataset();
-                    _watchdog_timer = 0;
-                    i2c_dataset.status.new_data = 1;
+                    GPS_degree[axis] = GPS_read[axis] / 10000000;  // get the degree to assure the sum fits to the int32_t
+
+                    // How close we are to a degree line ? its the first three digits from the fractions of degree
+                    //Check if we are close to a degree line, if yes, disable averaging,
+                    fraction3[axis] = (GPS_read[axis] - GPS_degree[axis] * 10000000) / 10000;
+
+                    GPS_filter_sum[axis] -= GPS_filter[axis][GPS_filter_index];
+                    GPS_filter[axis][GPS_filter_index] = GPS_read[axis] - (GPS_degree[axis] * 10000000);
+                    GPS_filter_sum[axis] += GPS_filter[axis][GPS_filter_index];
+                    GPS_filtered[axis] = GPS_filter_sum[axis] / GPS_FILTER_VECTOR_LENGTH + (GPS_degree[axis] * 10000000);
+                }
+
+                if ( nav_mode == NAV_MODE_POSHOLD)        //we use gps averaging only in poshold mode...
+                {
+                    if ( fraction3[LAT] > 1 && fraction3[LAT] < 999 ) i2c_dataset.gps_loc.lat = GPS_filtered[LAT]; else i2c_dataset.gps_loc.lat = GPS_read[LAT];
+                    if ( fraction3[LON] > 1 && fraction3[LON] < 999 ) i2c_dataset.gps_loc.lon = GPS_filtered[LON]; else i2c_dataset.gps_loc.lon = GPS_read[LON];
+                }
+                else
+                {
+                    i2c_dataset.gps_loc.lat = GPS_read[LAT];
+                    i2c_dataset.gps_loc.lon = GPS_read[LON];
                 }
             }
-
-            //Check for new incoming command on I2C
-            if (new_command != 0)
+            else     // ignore filtering since it switced off in the nav_flags
             {
-                _command = new_command;                                                   //save command byte for processing
-                new_command = 0;                                                          //clear it
-
-                _command_wp = (_command & 0xF0) >> 4;                                     //mask 4 MSB bits and shift down
-                _command = _command & 0x0F;                                               //empty 4MSB bits
-
-                switch (_command)
-                {
-                case I2C_GPS_COMMAND_POSHOLD:
-                    GPS_set_next_wp(16);                                                //wp16 is a virtual one, means current location
-                    GPSMode = GPSMODE_HOLD;
-                    nav_mode = NAV_MODE_POSHOLD;
-                    i2c_dataset.status.new_data = 0;                                    //invalidate current dataset
-                    break;
-                case I2C_GPS_COMMAND_START_NAV:
-                    GPS_set_next_wp(_command_wp);
-                    GPSMode = GPSMODE_WP;
-                    nav_mode = NAV_MODE_WP;
-                    i2c_dataset.status.new_data = 0;                                    //invalidate current dataset
-                    break;
-                case I2C_GPS_COMMAND_SET_WP:
-                    i2c_dataset.gps_wp[_command_wp].position.lat = GPS_latitude;
-                    i2c_dataset.gps_wp[_command_wp].position.lon = GPS_longitude;
-                    break;
-                case I2C_GPS_COMMAND_UPDATE_PIDS:
-                    pi_poshold_lat.kP((float)i2c_dataset.poshold_p / 100.0f);
-                    pi_poshold_lon.kP((float)i2c_dataset.poshold_p / 100.0f);
-                    pi_poshold_lat.kI((float)i2c_dataset.poshold_i / 100.0f);
-                    pi_poshold_lon.kI((float)i2c_dataset.poshold_i / 100.0f);
-                    pi_poshold_lat.imax(i2c_dataset.poshold_imax * 100);
-                    pi_poshold_lon.imax(i2c_dataset.poshold_imax * 100);
-
-                    pid_poshold_rate_lat.kP((float)i2c_dataset.poshold_rate_p / 10.0f);
-                    pid_poshold_rate_lon.kP((float)i2c_dataset.poshold_rate_p / 10.0f);
-                    pid_poshold_rate_lat.kI((float)i2c_dataset.poshold_rate_i / 100.0f);
-                    pid_poshold_rate_lon.kI((float)i2c_dataset.poshold_rate_i / 100.0f);
-                    pid_poshold_rate_lat.kD((float)i2c_dataset.poshold_rate_d / 1000.0f);
-                    pid_poshold_rate_lon.kD((float)i2c_dataset.poshold_rate_d / 1000.0f);
-                    pid_poshold_rate_lat.imax(i2c_dataset.poshold_rate_imax * 100);
-                    pid_poshold_rate_lon.imax(i2c_dataset.poshold_rate_imax * 100);
-
-                    pid_nav_lat.kP((float)i2c_dataset.nav_p / 10.0f);
-                    pid_nav_lon.kP((float)i2c_dataset.nav_p / 10.0f);
-                    pid_nav_lat.kI((float)i2c_dataset.nav_i / 100.0f);
-                    pid_nav_lon.kI((float)i2c_dataset.nav_i / 100.0f);
-                    pid_nav_lat.kD((float)i2c_dataset.nav_d / 1000.0f);
-                    pid_nav_lon.kD((float)i2c_dataset.nav_d / 1000.0f);
-                    pid_nav_lat.imax(i2c_dataset.nav_imax * 100);
-                    pid_nav_lon.imax(i2c_dataset.nav_imax * 100);
-
-                    #if defined(OPTFLOW)
-                    // force reload PID
-                    optflowUse = 0;
-                    #endif
-                    
-                    break;
-                case I2C_GPS_COMMAND_STOP_NAV:
-                    GPS_reset_nav();
-                    GPSMode = GPSMODE_NONAV;
-                    nav_mode = NAV_MODE_NONE;
-                    GPS_update_i2c_dataset();
-                    i2c_dataset.status.new_data = 1;
-                    break;
-
-                } //switch
+                i2c_dataset.gps_loc.lat = GPS_read[LAT];
+                i2c_dataset.gps_loc.lon = GPS_read[LON];
             }
+
+            #pragma endregion
+
+            if (i2c_dataset.status.gps3dfix == 1 && i2c_dataset.status.numsats >= 5)
+            {
+
+                lastframe_time = millis();
+                //copy the gps coordinates to variables used for calculations
+                GPS_latitude = i2c_dataset.gps_loc.lat;
+                GPS_longitude = i2c_dataset.gps_loc.lon;
+
+                // It's just for safety since home position must be set from the host
+                if (GPS_fix_home == 0)
+                {
+                    GPS_fix_home = 1;
+                    i2c_dataset.gps_wp[0].position.lat = GPS_latitude;
+                    i2c_dataset.gps_wp[0].position.lon = GPS_longitude;
+                    GPS_calc_longitude_scaling(GPS_latitude);  //need an initial value for distance and bearing calc
+                }
+                //dTnav calculation
+                //Time for calculating x,y speed and navigation pids
+                dTnav = (float)(millis() - nav_loopTimer) / 1000.0;
+                nav_loopTimer = millis();
+                // prevent runup from bad GPS
+                dTnav = min(dTnav, 1.0);
+
+                _watchdog_timer = millis();  //Reset watchdog timer
+
+                //calculate distance and bearings for gui and other stuff continously this is independent from navigation
+                i2c_dataset.distance_to_home = GPS_distance_cm(GPS_latitude, GPS_longitude, i2c_dataset.gps_wp[0].position.lat, i2c_dataset.gps_wp[0].position.lon);
+                i2c_dataset.home_to_copter_bearing = GPS_bearing(i2c_dataset.gps_wp[0].position.lat, i2c_dataset.gps_wp[0].position.lon, GPS_latitude, GPS_longitude);
+                //calculate the current velocity based on gps coordinates continously to get a valid speed at the moment when we start navigating
+                GPS_calc_velocity(GPS_latitude, GPS_longitude);
+
+                if (GPSMode != 0)     //ok we are navigating
+                {
+                    //do gps nav calculations here
+
+#if defined(GPS_LEAD_FILTER)
+                    wp_distance = GPS_distance_cm(GPS_lead_latitude, GPS_lead_longitude, GPS_WP_latitude, GPS_WP_longitude);
+                    target_bearing = GPS_bearing(GPS_lead_latitude, GPS_lead_longitude, GPS_WP_latitude, GPS_WP_longitude);
+                    GPS_calc_location_error(GPS_WP_latitude, GPS_WP_longitude, GPS_lead_latitude, GPS_lead_longitude);
+#else
+                    wp_distance = GPS_distance_cm(GPS_latitude, GPS_longitude, GPS_WP_latitude, GPS_WP_longitude);
+                    target_bearing = GPS_bearing(GPS_latitude, GPS_longitude, GPS_WP_latitude, GPS_WP_longitude);
+                    GPS_calc_location_error(GPS_WP_latitude, GPS_WP_longitude, GPS_latitude, GPS_longitude);
+#endif
+
+                    switch (nav_mode)
+                    {
+                    case NAV_MODE_POSHOLD:
+                        //Desired output is in nav_lat and nav_lon where 1deg inclination is 100
+                        GPS_calc_poshold(long_error, lat_error);
+                        break;
+                    case NAV_MODE_WP:
+                        int16_t speed = GPS_calc_desired_speed(i2c_dataset.nav_speed_max, true);      //slow navigation
+                        // use error as the desired rate towards the target
+                        GPS_calc_nav_rate(speed);
+
+                        // Are we there yet ?(within 2 meters of the destination)
+                        if ((wp_distance <= i2c_dataset.wp_radius) || check_missed_wp())          //if yes switch to poshold mode
+                        {
+                            nav_mode = NAV_MODE_POSHOLD;
+                            //set reached flag
+                            i2c_dataset.status.wp_reached = 1;
+                        }
+                        break;
+                    } //switch nav mode
+                } // if GPSmode!=0
+                // update i2c dataset from nav
+                GPS_update_i2c_dataset();
+            }
+            else          // we does not have 3d fix or numsats less than 5 , stop navigation
+            {
+                nav_lat = 0;
+                nav_lon = 0;
+                GPSMode = GPSMODE_NONAV;
+                nav_mode = NAV_MODE_NONE;
+                wp_distance = 0;
+                i2c_dataset.distance_to_home = 0;
+                i2c_dataset.home_to_copter_bearing = 0;
+                GPS_update_i2c_dataset();
+            }
+            // have new data at this point anyway
+            i2c_dataset.status.new_data = 1;
+
+        } // new frame
+    } //while
+    #pragma endregion
+
+    blink_sonar_update();
+
+    Optflow_update();
+
+
+    //check watchdog timer, after 1200ms without valid packet, assume that gps communication is lost.
+    if (_watchdog_timer != 0)
+    {
+        if (_watchdog_timer + 1200 < millis())
+        {
+            i2c_dataset.status.gps2dfix = 0;
+            i2c_dataset.status.gps3dfix = 0;
+            i2c_dataset.status.numsats = 0;
+            i2c_dataset.gps_loc.lat = 0;
+            i2c_dataset.gps_loc.lon = 0;
+            nav_lat = 0;
+            nav_lon = 0;
+            GPS_update_i2c_dataset();
+            _watchdog_timer = 0;
+            i2c_dataset.status.new_data = 1;
         }
+    }
+
+    //Check for new incoming command on I2C
+    if (new_command != 0)
+    {
+        _command = new_command;                                                   //save command byte for processing
+        new_command = 0;                                                          //clear it
+
+        _command_wp = (_command & 0xF0) >> 4;                                     //mask 4 MSB bits and shift down
+        _command = _command & 0x0F;                                               //empty 4MSB bits
+
+        switch (_command)
+        {
+        case I2C_GPS_COMMAND_POSHOLD:
+            GPS_set_next_wp(16);                                                //wp16 is a virtual one, means current location
+            GPSMode = GPSMODE_HOLD;
+            nav_mode = NAV_MODE_POSHOLD;
+            i2c_dataset.status.new_data = 0;                                    //invalidate current dataset
+            break;
+        case I2C_GPS_COMMAND_START_NAV:
+            GPS_set_next_wp(_command_wp);
+            GPSMode = GPSMODE_WP;
+            nav_mode = NAV_MODE_WP;
+            i2c_dataset.status.new_data = 0;                                    //invalidate current dataset
+            break;
+        case I2C_GPS_COMMAND_SET_WP:
+            i2c_dataset.gps_wp[_command_wp].position.lat = GPS_latitude;
+            i2c_dataset.gps_wp[_command_wp].position.lon = GPS_longitude;
+            break;
+        case I2C_GPS_COMMAND_UPDATE_PIDS:
+            pi_poshold_lat.kP((float)i2c_dataset.poshold_p / 100.0f);
+            pi_poshold_lon.kP((float)i2c_dataset.poshold_p / 100.0f);
+            pi_poshold_lat.kI((float)i2c_dataset.poshold_i / 100.0f);
+            pi_poshold_lon.kI((float)i2c_dataset.poshold_i / 100.0f);
+            pi_poshold_lat.imax(i2c_dataset.poshold_imax * 100);
+            pi_poshold_lon.imax(i2c_dataset.poshold_imax * 100);
+
+            pid_poshold_rate_lat.kP((float)i2c_dataset.poshold_rate_p / 10.0f);
+            pid_poshold_rate_lon.kP((float)i2c_dataset.poshold_rate_p / 10.0f);
+            pid_poshold_rate_lat.kI((float)i2c_dataset.poshold_rate_i / 100.0f);
+            pid_poshold_rate_lon.kI((float)i2c_dataset.poshold_rate_i / 100.0f);
+            pid_poshold_rate_lat.kD((float)i2c_dataset.poshold_rate_d / 1000.0f);
+            pid_poshold_rate_lon.kD((float)i2c_dataset.poshold_rate_d / 1000.0f);
+            pid_poshold_rate_lat.imax(i2c_dataset.poshold_rate_imax * 100);
+            pid_poshold_rate_lon.imax(i2c_dataset.poshold_rate_imax * 100);
+
+            pid_nav_lat.kP((float)i2c_dataset.nav_p / 10.0f);
+            pid_nav_lon.kP((float)i2c_dataset.nav_p / 10.0f);
+            pid_nav_lat.kI((float)i2c_dataset.nav_i / 100.0f);
+            pid_nav_lon.kI((float)i2c_dataset.nav_i / 100.0f);
+            pid_nav_lat.kD((float)i2c_dataset.nav_d / 1000.0f);
+            pid_nav_lon.kD((float)i2c_dataset.nav_d / 1000.0f);
+            pid_nav_lat.imax(i2c_dataset.nav_imax * 100);
+            pid_nav_lon.imax(i2c_dataset.nav_imax * 100);
+
+#if defined(OPTFLOW)
+            // force reload PID
+            optflowUse = 0;
+#endif
+
+            break;
+        case I2C_GPS_COMMAND_STOP_NAV:
+            GPS_reset_nav();
+            GPSMode = GPSMODE_NONAV;
+            nav_mode = NAV_MODE_NONE;
+            GPS_update_i2c_dataset();
+            i2c_dataset.status.new_data = 1;
+            break;
+
+        } //switch
+    }
+}
 
 
 

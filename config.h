@@ -7,7 +7,8 @@
 #define GPS_LEAD_FILTER
 
 /* Serial speed of the GPS */
-#define GPS_SERIAL_SPEED 38400
+//#define GPS_SERIAL_SPEED 38400
+#define GPS_SERIAL_SPEED 57600
 
 /* GPS protocol
  * NMEA         - Standard NMEA protocol GGA, GSA and RMC  sentences are needed
@@ -48,9 +49,9 @@
 #define OPTFLOW 	ADNS_5050
 //#define OF_ROTATE_I
 
-#define OF_SCLK             A2
-#define OF_SDIO             A1
-#define OF_NCS              A0 
+#define OF_SCLK             4//A2
+#define OF_SDIO             3//A1
+#define OF_NCS              2//A0 
 
 /* Lense focal distance, mm (set it for your own lense)
 (How to check: debug4 in GUI should not react on ROLL tilt, but react on ROLL slide) */
