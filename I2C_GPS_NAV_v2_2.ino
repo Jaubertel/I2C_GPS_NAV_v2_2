@@ -335,6 +335,7 @@ static uint8_t GPSMode = GPSMODE_NONAV;
 // Blink code variables
 //
 static uint32_t lastframe_time = 0;
+//static uint32_t last_serial_data_time = 0;
 static uint32_t _statusled_timer = 0;
 static int8_t _statusled_blinks = 0;
 static boolean _statusled_state = 0;
@@ -344,6 +345,9 @@ static boolean _statusled_state = 0;
 // Sonar variables
 //
 static uint32_t _sonar_timer = 0;
+
+static uint32_t _optflow_time = 0;
+
 
 ////////////////////////////////////////////////////////////////////////////////////
 // moving average filter variables
@@ -1332,7 +1336,7 @@ void receiveEvent(int bytesReceived)
 }
 
 
-void blink_sonar_update()
+void blink_sonar_optflow_update()
 {
 
     uint32_t now = millis();
@@ -1343,10 +1347,29 @@ void blink_sonar_update()
         _sonar_timer = now + 50;
         Sonar_update();
     }
+#endif    
+ 
+#if defined(OPTFLOW)
+    if (_optflow_time < now)
+    {
+        _optflow_time = now + 20;   // 50Hz, slightly slown than the fc
+        Optflow_update();
+    }
 #endif
+
 
     if (_statusled_timer < now)
     {
+        /*
+        if (last_serial_data_time + 5000 < now) {
+            // no gps communication
+            _statusled_state = !_statusled_state;
+            digitalWrite(13, _statusled_state ? HIGH : LOW);   // set the LED off
+            _statusled_timer = now + 2000;
+            return;
+        }
+        */
+
         if (lastframe_time + 5000 < now)
         {
             // no gps communication
@@ -1405,7 +1428,7 @@ prog_char UBLOX_INIT[] PROGMEM =                            // PROGMEM array mus
     0xB5, 0x62, 0x06, 0x01, 0x03, 0x00, 0x01, 0x03, 0x01, 0x0F, 0x49,                  //set STATUS MSG rate
     0xB5, 0x62, 0x06, 0x01, 0x03, 0x00, 0x01, 0x06, 0x01, 0x12, 0x4F,                  //set SOL MSG rate
     0xB5, 0x62, 0x06, 0x01, 0x03, 0x00, 0x01, 0x12, 0x01, 0x1E, 0x67,                  //set VELNED MSG rate
-    0xB5, 0x62, 0x06, 0x16, 0x08, 0x00, 0x03, 0x07, 0x03, 0x00, 0x51, 0x08, 0x00, 0x00, 0x8A, 0x41, //set WAAS to EGNOS
+    0xB5, 0x62, 0x06, 0x16, 0x08, 0x00, 0x03, 0x07, 0x03, 0x00, 0x51, 0x08, 0x00, 0x00, 0x8A, 0x41, //set WAAS to EGNOS    
     0xB5, 0x62, 0x06, 0x08, 0x06, 0x00, 0xC8, 0x00, 0x01, 0x00, 0x01, 0x00, 0xDE, 0x6A //set rate to 5Hz
 };
 #endif
@@ -1414,13 +1437,16 @@ void GPS_SerialInit()
 {
 
     Serial.begin(GPS_SERIAL_SPEED);
-    delay(1000);
+    delay(1000);    // Waiting for GPS to initialize?
 
 #if defined(UBLOX)
+
+// GPS baudrate saved in EPPROM
     //Set speed
     for (uint8_t i = 0; i < 5; i++)
     {
         Serial.begin(init_speed[i]);          // switch UART speed for sending SET BAUDRATE command (NMEA mode)
+        
 #if (GPS_SERIAL_SPEED==19200)
         Serial.write(PSTR("$PUBX,41,1,0003,0001,19200,0*23\r\n"));     // 19200 baud - minimal speed for 5Hz update rate
 #endif
@@ -1433,16 +1459,20 @@ void GPS_SerialInit()
 #if (GPS_SERIAL_SPEED==115200)
         Serial.write(PSTR("$PUBX,41,1,0003,0001,115200,0*1E\r\n"));    // 115200 baud
 #endif
+
         delay(300);     //Wait for init
     }
+
     delay(200);
     Serial.begin(GPS_SERIAL_SPEED);
+
+    // GPS configured with u-center and saved in EPPROM
     for (uint8_t i = 0; i < sizeof(UBLOX_INIT); i++)                     // send configuration data in UBX protocol
     {
         Serial.write(pgm_read_byte(UBLOX_INIT + i));
-        //delay(5); //simulating a 38400baud pace (or less), otherwise commands are not accepted by the device.
-        delay(10); //simulating a 38400baud pace (or less), otherwise commands are not accepted by the device.
+        delay(5); //simulating a 38400baud pace (or less), otherwise commands are not accepted by the device.
     }
+
 
 #elif defined(INIT_MTK_GPS)                            // MTK GPS setup
     for (uint8_t i = 0; i < 5; i++)
@@ -1495,14 +1525,6 @@ static int8_t       optflowUse = 0;
 /* PID calculations. Outputs optflow_angle[ROLL], optflow_angle[PITCH] */
 void Optflow_update()
 {
-    static uint32_t _optflow_time = 0;
-
-    uint32_t now = millis();
-    if (_optflow_time > now)
-        return;
-
-    _optflow_time = now + 20;   // 50Hz, slightly slown than the fc
-
     //static int16_t prevHeading = 0;
     static int16_t      optflowErrorI[2] = { 0, 0 };
     int8_t axis;
@@ -1623,7 +1645,9 @@ inline void optflow_get_vel()
     // read and average surface quality
     average8(&avgSqual, (int8_t)optflow_squal(), 5);
 
-    if (i2c_dataset.attitude.cosZ > 70 && avgSqual.res > 10)
+    if (i2c_dataset.attitude.cosZ > 70 
+    && avgSqual.res > 10
+    && i2c_dataset.ext_status.sonar_errors < 5)
     {
         // above 3m, freeze altitude (it means less stabilization on high altitude)
         // .. and reduce signal if surface quality <50
@@ -2073,6 +2097,9 @@ void loop()
 
     while (Serial.available())
     {
+        /*
+        last_serial_data_time = millis();
+        */
 
         if (
 #if defined(NMEA)
@@ -2218,10 +2245,7 @@ void loop()
     } //while
     #pragma endregion
 
-    blink_sonar_update();
-
-    Optflow_update();
-
+    blink_sonar_optflow_update();
 
     //check watchdog timer, after 1200ms without valid packet, assume that gps communication is lost.
     if (_watchdog_timer != 0)

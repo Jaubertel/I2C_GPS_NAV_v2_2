@@ -7,8 +7,7 @@
 #define GPS_LEAD_FILTER
 
 /* Serial speed of the GPS */
-//#define GPS_SERIAL_SPEED 38400
-#define GPS_SERIAL_SPEED 57600
+#define GPS_SERIAL_SPEED 38400
 
 /* GPS protocol
  * NMEA         - Standard NMEA protocol GGA, GSA and RMC  sentences are needed
@@ -53,8 +52,7 @@
 #define OF_SDIO             3//A1
 #define OF_NCS              2//A0 
 
-/* Lense focal distance, mm (set it for your own lense)
-(How to check: debug4 in GUI should not react on ROLL tilt, but react on ROLL slide) */
+/* Lense focal distance, mm (set it for your own lense) */
 #define OF_FOCAL_DIST 7
 /* Deadband for ROLL,PITCH sticks where position hold is enabled. Max value 100 */
 #define OF_DEADBAND 15
