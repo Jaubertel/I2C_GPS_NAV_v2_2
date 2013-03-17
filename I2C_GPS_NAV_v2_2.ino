@@ -348,6 +348,7 @@ static uint32_t _sonar_timer = 0;
 
 static uint32_t _optflow_time = 0;
 
+static uint8_t _serial_avaiable;
 
 ////////////////////////////////////////////////////////////////////////////////////
 // moving average filter variables
@@ -1360,15 +1361,8 @@ void blink_sonar_optflow_update()
 
     if (_statusled_timer < now)
     {
-        /*
-        if (last_serial_data_time + 5000 < now) {
-            // no gps communication
-            _statusled_state = !_statusled_state;
-            digitalWrite(13, _statusled_state ? HIGH : LOW);   // set the LED off
-            _statusled_timer = now + 2000;
+        if (!_serial_avaiable)
             return;
-        }
-        */
 
         if (lastframe_time + 5000 < now)
         {
@@ -2009,6 +2003,7 @@ void Sonar_update()
 //
 void setup()
 {
+    _serial_avaiable = 0;
 
     uint8_t i;
 
@@ -2085,11 +2080,12 @@ void setup()
 /******************************************************************************************************************/
 void loop()
 {
-
     static uint8_t GPS_fix_home;
     static uint8_t _command_wp;
     static uint8_t _command;
     static uint32_t _watchdog_timer = 0;
+    
+
     uint8_t axis;
     uint16_t fraction3[2];
 
@@ -2097,9 +2093,7 @@ void loop()
 
     while (Serial.available())
     {
-        /*
-        last_serial_data_time = millis();
-        */
+        _serial_avaiable = 1;
 
         if (
 #if defined(NMEA)
