@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+# Simple script to setup UBLOX NEO 6M GPS to use with I2C_NAV
+
 import serial
 import string
 import math
@@ -33,7 +35,7 @@ prog = \
 
 save_to_epprom = '\xB5\x62\x06\x09\x0D\x00\x00\x00\x00\x00\xFF\xFF\x00\x00\x00\x00\x00\x00\x04\x1E\xAC'
 
-save_to_all_devies = '\xB5\x62\x06\x09\x0D\x00\x00\x00\x00\x00\xFF\xFF\x00\x00\x00\x00\x00\x00\x17\x31\xBF'
+save_to_all_devices = '\xB5\x62\x06\x09\x0D\x00\x00\x00\x00\x00\xFF\xFF\x00\x00\x00\x00\x00\x00\x17\x31\xBF'
 
 ser = None
 try:
@@ -44,7 +46,7 @@ try:
 
         if save:
             #prog += save_to_epprom
-            prog += save_to_all_devies
+            prog += save_to_all_devices
 
         print 'Initialze UBLOX GPS ...'
         time.sleep(0.2)
