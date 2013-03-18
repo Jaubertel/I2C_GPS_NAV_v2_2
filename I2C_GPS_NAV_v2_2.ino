@@ -168,7 +168,7 @@ typedef struct
     uint8_t    optflow_pause: 1;
     uint8_t    optflow_available: 1;
     uint8_t    sonar_errors: 4;
-    uint8_t    reserved: 2;
+    uint8_t    nav_mode: 2;
 } EXT_STATUS_REGISTER;
 
 typedef struct
@@ -336,7 +336,7 @@ static uint8_t GPSMode = GPSMODE_NONAV;
 //
 static uint32_t lastframe_time = 0;
 //static uint32_t last_serial_data_time = 0;
-static uint32_t _statusled_timer = 0;
+static uint32_t _statusled_timer;
 static int8_t _statusled_blinks = 0;
 static boolean _statusled_state = 0;
 
@@ -345,10 +345,8 @@ static boolean _statusled_state = 0;
 // Sonar variables
 //
 static uint32_t _sonar_timer = 0;
-
 static uint32_t _optflow_time = 0;
-
-static uint8_t _serial_avaiable;
+static uint32_t _optflow_available;
 
 ////////////////////////////////////////////////////////////////////////////////////
 // moving average filter variables
@@ -661,7 +659,6 @@ void GPS_update_i2c_dataset()
     i2c_dataset.wp_distance       = wp_distance;
     i2c_dataset.wp_target_bearing = target_bearing;
     i2c_dataset.nav_bearing       = nav_bearing;
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -1339,7 +1336,6 @@ void receiveEvent(int bytesReceived)
 
 void blink_sonar_optflow_update()
 {
-
     uint32_t now = millis();
 
 #if defined(SONAR) && !defined(MAXBOTIX_PWM)
@@ -1351,7 +1347,7 @@ void blink_sonar_optflow_update()
 #endif    
  
 #if defined(OPTFLOW)
-    if (_optflow_time < now)
+    if (_optflow_available && _optflow_time < now)
     {
         _optflow_time = now + 20;   // 50Hz, slightly slown than the fc
         Optflow_update();
@@ -1361,9 +1357,6 @@ void blink_sonar_optflow_update()
 
     if (_statusled_timer < now)
     {
-        if (!_serial_avaiable)
-            return;
-
         if (lastframe_time + 5000 < now)
         {
             // no gps communication
@@ -1762,6 +1755,7 @@ void Optflow_init()
     if (ADNS_read(Product_ID) == 0x12)
     {
         ADNS_write(Mouse_Control2, RES_CFG); // Set resolution
+        _optflow_available = 1;
     }
 }
 
@@ -2003,17 +1997,15 @@ void Sonar_update()
 //
 void setup()
 {
-    _serial_avaiable = 0;
+    _optflow_available = 0;
+
+    _statusled_timer = ~0;
 
     uint8_t i;
 
     //Init Sonar
 #if defined(SONAR)
     Sonar_init();
-#endif
-
-#if defined(OPTFLOW)
-    Optflow_init();
 #endif
 
     //Init GPS
@@ -2066,13 +2058,45 @@ void setup()
     i2c_dataset.ext_status.optflow_pause = 0;
     i2c_dataset.ext_status.optflow_available = 0;
     i2c_dataset.ext_status.sonar_errors = 0;
-    i2c_dataset.ext_status.reserved = 0;
+    i2c_dataset.ext_status.nav_mode = NAV_MODE_NONE;
 
     //Start I2C communication routines
     Wire.begin(I2C_ADDRESS);               // DO NOT FORGET TO COMPILE WITH 400KHz!!! else change TWBR Speed to 100khz on Host !!! Address 0x40 write 0x41 read
     Wire.onRequest(requestEvent);          // Set up event handlers
     Wire.onReceive(receiveEvent);
 
+#if defined(OPTFLOW)
+    Optflow_init();
+
+    // Warn that optflow is not working!
+    if (_optflow_available) {
+        delay(500);
+        for (int i=0; i<3; i++) {
+            digitalWriteFast(13, HIGH);
+            delay(50);
+            digitalWriteFast(13, LOW);
+            delay(100);
+        }
+        delay(1500);
+    }
+#endif
+
+    for (int j=0; j<3; j++) {
+        if (Serial.available()) {
+            delay(500);
+            for (int i=0; i<5; i++) {
+                digitalWriteFast(13, HIGH);
+                delay(50);
+                digitalWriteFast(13, LOW);
+                delay(100);
+            }
+            delay(1500);
+            _statusled_timer = millis() + 5000;
+            break;
+        }
+
+        delay(500);
+    }
 }
 
 /******************************************************************************************************************/
@@ -2085,7 +2109,6 @@ void loop()
     static uint8_t _command;
     static uint32_t _watchdog_timer = 0;
     
-
     uint8_t axis;
     uint16_t fraction3[2];
 
@@ -2093,8 +2116,6 @@ void loop()
 
     while (Serial.available())
     {
-        _serial_avaiable = 1;
-
         if (
 #if defined(NMEA)
             GPS_NMEA_newFrame(Serial.read())
@@ -2212,6 +2233,11 @@ void loop()
                         if ((wp_distance <= i2c_dataset.wp_radius) || check_missed_wp())          //if yes switch to poshold mode
                         {
                             nav_mode = NAV_MODE_POSHOLD;
+                            // required by the failsafe, autoloading and optflow rountines
+                            i2c_dataset.ext_status.nav_mode = nav_mode;
+                            //duplicated
+                            //i2c_dataset.status.new_data = 1;
+
                             //set reached flag
                             i2c_dataset.status.wp_reached = 1;
                         }
@@ -2227,6 +2253,11 @@ void loop()
                 nav_lon = 0;
                 GPSMode = GPSMODE_NONAV;
                 nav_mode = NAV_MODE_NONE;
+                // required by the failsafe, autoloading and optflow rountines
+                i2c_dataset.ext_status.nav_mode = nav_mode;
+                // duplicated
+                //i2c_dataset.status.new_data = 1;
+
                 wp_distance = 0;
                 i2c_dataset.distance_to_home = 0;
                 i2c_dataset.home_to_copter_bearing = 0;
@@ -2274,12 +2305,22 @@ void loop()
             GPS_set_next_wp(16);                                                //wp16 is a virtual one, means current location
             GPSMode = GPSMODE_HOLD;
             nav_mode = NAV_MODE_POSHOLD;
+            // required by the failsafe, autoloading and optflow rountines
+            i2c_dataset.ext_status.nav_mode = nav_mode;
+            // Ok, we update it to POSHOLD in fc manually
+            //i2c_dataset.status.new_data = 1;
+
             i2c_dataset.status.new_data = 0;                                    //invalidate current dataset
             break;
         case I2C_GPS_COMMAND_START_NAV:
             GPS_set_next_wp(_command_wp);
             GPSMode = GPSMODE_WP;
             nav_mode = NAV_MODE_WP;
+            // required by the failsafe, autoloading and optflow rountines
+            i2c_dataset.ext_status.nav_mode = nav_mode;
+            // Ok, we update it to POSHOLD in fc manually
+            //i2c_dataset.status.new_data = 1;            
+
             i2c_dataset.status.new_data = 0;                                    //invalidate current dataset
             break;
         case I2C_GPS_COMMAND_SET_WP:
@@ -2322,6 +2363,9 @@ void loop()
             GPS_reset_nav();
             GPSMode = GPSMODE_NONAV;
             nav_mode = NAV_MODE_NONE;
+            // required by the failsafe, autoloading and optflow rountines
+            i2c_dataset.ext_status.nav_mode = nav_mode;
+
             GPS_update_i2c_dataset();
             i2c_dataset.status.new_data = 1;
             break;
