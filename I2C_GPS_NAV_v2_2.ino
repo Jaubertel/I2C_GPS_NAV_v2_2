@@ -168,7 +168,8 @@ typedef struct
     uint8_t    optflow_pause: 1;
     uint8_t    optflow_available: 1;
     uint8_t    sonar_errors: 4;
-    uint8_t    nav_mode: 2;
+    //uint8_t    nav_mode: 2;
+    uint8_t    reserved: 2;
 } EXT_STATUS_REGISTER;
 
 typedef struct
@@ -1516,17 +1517,7 @@ void Optflow_update()
     static int16_t      optflowErrorI[2] = { 0, 0 };
     int8_t axis;
 
-    // enable OPTFLOW only in NAV_MODE_POSHOLD
-    if
-    (
-            (
-                // Position hold mode
-                (NAV_MODE_POSHOLD == nav_mode)
-                // Lost GPS fix
-                || (!(i2c_dataset.status.gps3dfix == 1 && i2c_dataset.status.numsats >= 5) && (NAV_MODE_NONE == nav_mode))
-            )
-            && (i2c_dataset.ext_status.optflow_pause == 0)
-    )
+    if (i2c_dataset.ext_status.optflow_pause == 0)
     {
         // init first time mode enabled
         if (!optflowUse)
@@ -1601,7 +1592,6 @@ void Optflow_update()
         i2c_dataset.ext_status.optflow_available = 0;
         if (optflowUse)
         {
-            // switch mode off
             i2c_dataset.flow.angle[ROLL] = 0;
             i2c_dataset.flow.angle[PITCH] = 0;
             optflowUse = 0;
@@ -2058,7 +2048,7 @@ void setup()
     i2c_dataset.ext_status.optflow_pause = 0;
     i2c_dataset.ext_status.optflow_available = 0;
     i2c_dataset.ext_status.sonar_errors = 0;
-    i2c_dataset.ext_status.nav_mode = NAV_MODE_NONE;
+    //i2c_dataset.ext_status.nav_mode = NAV_MODE_NONE;
 
     //Start I2C communication routines
     Wire.begin(I2C_ADDRESS);               // DO NOT FORGET TO COMPILE WITH 400KHz!!! else change TWBR Speed to 100khz on Host !!! Address 0x40 write 0x41 read
@@ -2233,10 +2223,12 @@ void loop()
                         if ((wp_distance <= i2c_dataset.wp_radius) || check_missed_wp())          //if yes switch to poshold mode
                         {
                             nav_mode = NAV_MODE_POSHOLD;
+                            /*
                             // required by the failsafe, autoloading and optflow rountines
                             i2c_dataset.ext_status.nav_mode = nav_mode;
                             //duplicated
                             //i2c_dataset.status.new_data = 1;
+                            */
 
                             //set reached flag
                             i2c_dataset.status.wp_reached = 1;
@@ -2253,10 +2245,12 @@ void loop()
                 nav_lon = 0;
                 GPSMode = GPSMODE_NONAV;
                 nav_mode = NAV_MODE_NONE;
+                /*
                 // required by the failsafe, autoloading and optflow rountines
                 i2c_dataset.ext_status.nav_mode = nav_mode;
                 // duplicated
                 //i2c_dataset.status.new_data = 1;
+                */
 
                 wp_distance = 0;
                 i2c_dataset.distance_to_home = 0;
@@ -2305,22 +2299,24 @@ void loop()
             GPS_set_next_wp(16);                                                //wp16 is a virtual one, means current location
             GPSMode = GPSMODE_HOLD;
             nav_mode = NAV_MODE_POSHOLD;
+            /*
             // required by the failsafe, autoloading and optflow rountines
             i2c_dataset.ext_status.nav_mode = nav_mode;
             // Ok, we update it to POSHOLD in fc manually
             //i2c_dataset.status.new_data = 1;
-
+            */
             i2c_dataset.status.new_data = 0;                                    //invalidate current dataset
             break;
         case I2C_GPS_COMMAND_START_NAV:
             GPS_set_next_wp(_command_wp);
             GPSMode = GPSMODE_WP;
             nav_mode = NAV_MODE_WP;
+            /*
             // required by the failsafe, autoloading and optflow rountines
             i2c_dataset.ext_status.nav_mode = nav_mode;
             // Ok, we update it to POSHOLD in fc manually
             //i2c_dataset.status.new_data = 1;            
-
+            */
             i2c_dataset.status.new_data = 0;                                    //invalidate current dataset
             break;
         case I2C_GPS_COMMAND_SET_WP:
@@ -2363,8 +2359,10 @@ void loop()
             GPS_reset_nav();
             GPSMode = GPSMODE_NONAV;
             nav_mode = NAV_MODE_NONE;
+            /*
             // required by the failsafe, autoloading and optflow rountines
             i2c_dataset.ext_status.nav_mode = nav_mode;
+            */
 
             GPS_update_i2c_dataset();
             i2c_dataset.status.new_data = 1;
