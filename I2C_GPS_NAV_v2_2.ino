@@ -37,11 +37,11 @@
 #define REG_MAP_SIZE       sizeof(i2c_dataset)       //size of register map
 #define MAX_SENT_BYTES     0x0C                      //maximum amount of data that I could receive from a master device (register, plus 11 byte waypoint data)
 
-#define LAT  0
-#define LON  1
+#define LAT     0
+#define LON     1
 
-#define ROLL 0
-#define PITCH 1
+#define ROLL    0
+#define PITCH   1
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Which command I got from the host ? in GPSMode variable
@@ -124,7 +124,6 @@ typedef struct
     uint8_t command: 4;
     uint8_t     wp: 4;
 } COMMAND_REGISTER;
-
 
 typedef struct
 {
@@ -2057,35 +2056,33 @@ void setup()
 
 #if defined(OPTFLOW)
     Optflow_init();
-
-    // Warn that optflow is not working!
-    if (_optflow_available) {
-        delay(500);
-        for (int i=0; i<3; i++) {
-            digitalWriteFast(13, HIGH);
-            delay(50);
-            digitalWriteFast(13, LOW);
-            delay(100);
-        }
-        delay(1500);
-    }
 #endif
 
-    for (int j=0; j<3; j++) {
+    uint8_t _serial_available = 0;
+    for (int i=0; i<3; i++) {
         if (Serial.available()) {
-            delay(500);
-            for (int i=0; i<5; i++) {
-                digitalWriteFast(13, HIGH);
-                delay(50);
-                digitalWriteFast(13, LOW);
-                delay(100);
-            }
-            delay(1500);
-            _statusled_timer = millis() + 5000;
+            _serial_available = 1;   
             break;
         }
-
         delay(500);
+    }
+
+    uint8_t blinks = 0;
+    if (_optflow_available) {
+        _statusled_timer = millis() + 5000;
+        blinks += 2;
+    }
+        
+    if (_serial_available) {
+        _statusled_timer = millis() + 5000;
+        blinks += 3;
+    }
+
+    for (int i=0; i<blinks; i++) {
+        digitalWrite(13, HIGH);
+        delay(100);
+        digitalWrite(13, LOW);
+        delay(100);
     }
 }
 
