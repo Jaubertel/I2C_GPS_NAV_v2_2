@@ -1419,21 +1419,65 @@ prog_char UBLOX_INIT[] PROGMEM =                            // PROGMEM array mus
     0xB5, 0x62, 0x06, 0x08, 0x06, 0x00, 0xC8, 0x00, 0x01, 0x00, 0x01, 0x00, 0xDE, 0x6A //set rate to 5Hz
 };
 
-prog_char UBLOX_SET_BAUDRATE[] PROGMEM =   {
-#if (GPS_SERIAL_SPEED==19200)    
+prog_char UBLOX_SET_BAUDRATE[] PROGMEM =   {    
+#if (GPS_SERIAL_SPEED==19200)
+        //"$PUBX,41,1,0003,0001,19200,0*23\r\n"
+
+        '$', 'P', 'U', 'B', 'X', ',', 
+        '4', '1', ',',
+        '1', ',', 
+        '0', '0', '0', '3', ',',
+        '0', '0', '0', '1', ',',
+        '1', '9', '2', '0', '0', ',',
+        '0',
+        '*', '2', '3', '\r', '\n',
+
         0xB5, 0x62, 0x06, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0xD0, 0x08, 0x00, 0x00, 0x00, 0x4B,
         0x00, 0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42, 0x2B              
 #endif
 #if (GPS_SERIAL_SPEED==38400)
+        //"$PUBX,41,1,0003,0001,38400,0*26\r\n"
+
+        '$', 'P', 'U', 'B', 'X', ',', 
+        '4', '1', ',',
+        '1', ',', 
+        '0', '0', '0', '3', ',',
+        '0', '0', '0', '1', ',',
+        '3', '8', '4', '0', '0', ',',
+        '0',
+        '*', '2', '6', '\r', '\n',
+
         0xB5, 0x62, 0x06, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0xD0, 0x08, 0x00, 0x00, 0x00, 0x96,  
         0x00, 0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8D, 0x64    
 
 #endif
 #if (GPS_SERIAL_SPEED==57600)
+        //"$PUBX,41,1,0003,0001,57600,0*2D\r\n"
+
+        '$', 'P', 'U', 'B', 'X', ',', 
+        '4', '1', ',',
+        '1', ',', 
+        '0', '0', '0', '3', ',',
+        '0', '0', '0', '1', ',',
+        '5', '7', '6', '0', '0', ',',
+        '0',
+        '*', '2', 'D', '\r', '\n',
+
         0xB5, 0x62, 0x06, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0xD0, 0x08, 0x00, 0x00, 0x00, 0xE1, 
         0x00, 0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xD8, 0x9D              
 #endif
 #if (GPS_SERIAL_SPEED==115200)
+        //"$PUBX,41,1,0003,0001,115200,0*1E\r\n"
+
+        '$', 'P', 'U', 'B', 'X', ',', 
+        '4', '1', ',',
+        '1', ',', 
+        '0', '0', '0', '3', ',',
+        '0', '0', '0', '1', ',',
+        '1', '1', '5', '2', '0', '0', ',',
+        '0',
+        '*', '1', 'E', '\r', '\n',
+
         0xB5, 0x62, 0x06, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0xD0, 0x08, 0x00, 0x00, 0x00, 0xC2,
         0x01, 0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xBA, 0x52
 #endif
@@ -1453,21 +1497,6 @@ void GPS_SerialInit()
     for (uint8_t i = 0; i < 5; i++)
     {
         Serial.begin(init_speed[i]);          // switch UART speed for sending SET BAUDRATE command (NMEA mode)
-        delay(200);     //Wait for init  
-        
-#if (GPS_SERIAL_SPEED==19200)
-        Serial.write(PSTR("$PUBX,41,1,0003,0001,19200,0*23\r\n"));     // 19200 baud - minimal speed for 5Hz update rate
-#endif
-#if (GPS_SERIAL_SPEED==38400)
-        Serial.write(PSTR("$PUBX,41,1,0003,0001,38400,0*26\r\n"));     // 38400 baud
-#endif
-#if (GPS_SERIAL_SPEED==57600)
-        Serial.write(PSTR("$PUBX,41,1,0003,0001,57600,0*2D\r\n"));     // 57600 baud
-#endif
-#if (GPS_SERIAL_SPEED==115200)
-        Serial.write(PSTR("$PUBX,41,1,0003,0001,115200,0*1E\r\n"));    // 115200 baud
-#endif
-
         delay(200);     //Wait for init
         for (uint8_t j = 0; j < sizeof(UBLOX_SET_BAUDRATE); j++)                     // send configuration data in UBX protocol
         {
