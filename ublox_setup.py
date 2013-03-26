@@ -14,10 +14,10 @@ comPortBaud = 38400
 #comPortBaud = 9600 
 
 init = False 
-init = True
+#init = True
 
 save = False
-save = True
+#save = True
 
 prog = \
 '\xB5\x62\x06\x01\x03\x00\xF0\x05\x00\xFF\x19' + \
@@ -45,7 +45,7 @@ try:
     if init:
 
         if save:
-            #prog += save_to_epprom
+            prog += save_to_epprom
             prog += save_to_all_devices
 
         print 'Initialze UBLOX GPS ...'
