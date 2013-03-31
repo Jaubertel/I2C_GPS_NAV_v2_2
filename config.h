@@ -7,7 +7,7 @@
 #define GPS_LEAD_FILTER
 
 /* Serial speed of the GPS */
-#define GPS_SERIAL_SPEED 38400
+#define GPS_SERIAL_SPEED 57600
 
 /* GPS protocol
  * NMEA         - Standard NMEA protocol GGA, GSA and RMC  sentences are needed
@@ -21,6 +21,7 @@
 
 //#define NMEA
 #define UBLOX
+ #define UBLOX_CONFIG_ALL_PORTS
 //#define MTK_BINARY16
 //#define MTK_BINARY19
 //#define INIT_MTK_GPS
@@ -34,8 +35,8 @@
 // PWM output continous sonars such as the MAXBOTIX series (connect pin2(PWM out) of the sonar to PC2
 
 #define SONAR                       // USE Sonar
-#define SONAR_SONARFULL     		450 //full sonar reading before this point (cm)
-#define SONAR_BAROFULL      		600 //full baro reading after this point (cm)
+#define SONAR_SONARFULL     		300 //full sonar reading before this point (cm)
+#define SONAR_BAROFULL      		450 //full baro reading after this point (cm)
 /* Maximum number of errors to switch to baro (integer 1..20) */
 #define SONAR_ERROR_MAX     		10
 
@@ -93,5 +94,7 @@
 // GPS data filtering - moving average filter vector length
 //
 #define GPS_FILTER_VECTOR_LENGTH 5
+
+
 
 
