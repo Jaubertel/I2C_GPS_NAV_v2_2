@@ -9,12 +9,12 @@ Features
 
 LED
 ---
-# start up
+## start up
 - two blinks: optical flow sensor detected
 - three blinks: serial traffic detected
 - five blinks: both serial and optical flow sensor detected
 
-# running time
+## run time
 - one blink every two seconds: no valid gps frame in last five seconds, could be checksum/baudrate/config error
 - one blick every one second: no gps fix in last five seconds
 - two blink every one second: 2d fix
